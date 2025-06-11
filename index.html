@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8">
+  <title>Squash-peli Bonusmaaleilla ja Stroke-esteillä</title>
+  <style>
+    body { background: #222; display: flex; flex-direction: column; align-items: center; }
+    canvas { background: #fff; margin-top: 40px; border: 3px solid #333; }
+    #ranking-list { 
+      background: #fff; 
+      border: 2px solid #333; 
+      margin-top: 24px; 
+      border-radius: 8px; 
+      box-shadow: 0 2px 6px #8884;
+      min-width: 320px;
+      max-width: 340px;
+      padding: 12px 18px;
+    }
+    #ranking-list h2 { font-size: 1.3em; margin-bottom: 10px; text-align: center; }
+    #ranking-list ol { padding-left: 20px; }
+    #ranking-list li { font-size: 1.1em; margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <canvas id="squash" width="600" height="400"></canvas>
+  <div id="ranking-list">
+    <h2>Ranking-lista</h2>
+    <ol id="rankings"></ol>
+  </div>
+  <script>
+    // --- PELI ---
+    const canvas = document.getElementById("squash");
+    const ctx = canvas.getContext("2d");
+    const width = canvas.width;
+    const height = canvas.height;
+
+    const paddle = { width: 10, height: 80, x: width - 20, y: height/2 - 40, speed: 6, dy: 0 };
+    const ball = { x: 40, y: height/2, radius: 10, speed: 4, dx: 4, dy: 3 };
+    let score = 0;
+    let isGameOver = false;
+    let disqualified = false;
+
+    // --- MAALI ("target") ---
+    let target = null;
+    let targetActive = true;
+
+    // --- STROKE-ESTE ---
+    let stroke = null;
+    let strokeActive = true;
+
+    // Skaalaus funktiot (isosta pienimpään)
+    function targetRadius(points) { return 40 - ((points-1)/99)*30; }
+    function strokeRadius(points) { return 40 - ((points-1)/9)*30; }
+
+    // Kentälle uusi maali satunnaiseen paikkaan (ei päällekkäin esteen kanssa)
+    function spawnTarget() {
+      let value, radius, x, y, safe = false, tries = 0;
+      do {
+        value = Math.floor(Math.random()*100) + 1;
+        radius = targetRadius(value);
+        const margin = Math.max(radius, 30);
+        x = Math.random()*(width-2*margin) + margin;
+        y = Math.random()*(height-2*margin) + margin;
+        // Tarkista ettei osu strokeen
+        safe = !strokeActive || !stroke ||
+          Math.hypot(x-stroke.x, y-stroke.y) > (radius + stroke.radius + 8);
+        tries++;
+      } while(!safe && tries < 100);
+      target = { x, y, radius, value };
+      targetActive = true;
+    }
+
+    // Kentälle uusi stroke-este (ei päällekkäin maalin kanssa)
+    function spawnStroke() {
+      let value, radius, x, y, safe = false, tries = 0;
+      do {
+        value = Math.floor(Math.random()*10) + 1;
+        radius = strokeRadius(value);
+        const margin = Math.max(radius, 30);
+        x = Math.random()*(width-2*margin) + margin;
+        y = Math.random()*(height-2*margin) + margin;
+        // Tarkista ettei osu maaliin
+        safe = !targetActive || !target ||
+          Math.hypot(x-target.x, y-target.y) > (radius + target.radius + 8);
+        tries++;
+      } while(!safe && tries < 100);
+      stroke = { x, y, radius, value };
+      strokeActive = true;
+    }
+
+    function ballHitsTarget() {
+      if (!targetActive || !target) return false;
+      const dx = ball.x - target.x;
+      const dy = ball.y - target.y;
+      return Math.sqrt(dx*dx + dy*dy) < ball.radius + target.radius;
+    }
+    function ballHitsStroke() {
+      if (!strokeActive || !stroke) return false;
+      const dx = ball.x - stroke.x;
+      const dy = ball.y - stroke.y;
+      return Math.sqrt(dx*dx + dy*dy) < ball.radius + stroke.radius;
+    }
+
+    document.addEventListener("keydown", function(e) {
+      if (e.key === "ArrowUp") paddle.dy = -paddle.speed;
+      else if (e.key === "ArrowDown") paddle.dy = paddle.speed;
+    });
+    document.addEventListener("keyup", function(e) {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") paddle.dy = 0;
+    });
+
+    function drawPaddle() {
+      ctx.fillStyle = "#2196f3";
+      ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+    }
+    function drawBall() {
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2);
+      ctx.fillStyle = "#f44336";
+      ctx.fill();
+      ctx.closePath();
+    }
+    function drawTarget() {
+      if (!targetActive || !target) return;
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, target.radius, 0, Math.PI*2);
+      ctx.fillStyle = "#37e77e";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#11833d";
+      ctx.stroke();
+      ctx.closePath();
+      ctx.font = "bold 16px Arial";
+      ctx.fillStyle = "#183b13";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(target.value, target.x, target.y);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+    }
+    function drawStroke() {
+      if (!strokeActive || !stroke) return;
+      ctx.beginPath();
+      ctx.arc(stroke.x, stroke.y, stroke.radius, 0, Math.PI*2);
+      ctx.fillStyle = "#e74c3c";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#910000";
+      ctx.stroke();
+      ctx.closePath();
+      ctx.font = "bold 16px Arial";
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("-" + stroke.value, stroke.x, stroke.y);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+    }
+    function drawScore() {
+      ctx.font = "22px Arial";
+      ctx.fillStyle = "#111";
+      ctx.fillText("Pisteet: " + score, 10, 30);
+    }
+
+    function update() {
+      if (isGameOver) return;
+
+      paddle.y += paddle.dy;
+      if (paddle.y < 0) paddle.y = 0;
+      if (paddle.y + paddle.height > height) paddle.y = height - paddle.height;
+
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+
+      if (ball.y - ball.radius < 0 || ball.y + ball.radius > height) {
+        ball.dy = -ball.dy;
+      }
+      if (ball.x - ball.radius < 0) {
+        ball.dx = -ball.dx;
+      }
+
+      // Osuma maaliin
+      if (targetActive && ballHitsTarget()) {
+        score += target.value;
+        targetActive = false;
+        target = null;
+      }
+
+      // Osuma strokeen (miinus pisteitä)
+      if (strokeActive && ballHitsStroke()) {
+        score -= stroke.value;
+        strokeActive = false;
+        stroke = null;
+        if (score < 0) {
+          disqualified = true;
+          isGameOver = true;
+          setTimeout(gameOver, 350);
+        }
+      }
+
+      // Mailaosuma
+      if (
+        ball.x + ball.radius > paddle.x &&
+        ball.y > paddle.y &&
+        ball.y < paddle.y + paddle.height
+      ) {
+        ball.dx = -ball.dx;
+        score++;
+        // Jos maali ei ole, arvotaan uusi
+        if (!targetActive) spawnTarget();
+        // Jos stroke ei ole, arvotaan uusi
+        if (!strokeActive) spawnStroke();
+      }
+
+      // Normi game over
+      if (ball.x - ball.radius > width && !isGameOver) {
+        isGameOver = true;
+        setTimeout(gameOver, 350);
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, width, height);
+      drawPaddle();
+      drawBall();
+      drawTarget();
+      drawStroke();
+      drawScore();
+    }
+
+    function loop() {
+      update();
+      draw();
+      if (!isGameOver) requestAnimationFrame(loop);
+    }
+
+    // --- RANKING-LISTA ---
+    const MAX_RANKINGS = 10;
+    function getRankings() {
+      const saved = localStorage.getItem("squash-rankings");
+      return saved ? JSON.parse(saved) : [];
+    }
+    function saveRankings(rankings) {
+      localStorage.setItem("squash-rankings", JSON.stringify(rankings));
+    }
+    function updateRankingList() {
+      const rankings = getRankings();
+      const ol = document.getElementById("rankings");
+      ol.innerHTML = '';
+      if (rankings.length === 0) {
+        ol.innerHTML = "<li>- Ei tuloksia -</li>";
+        return;
+      }
+      rankings.forEach(({name, score}, idx) => {
+        const li = document.createElement("li");
+        li.textContent = `${name} – ${score} pistettä`;
+        ol.appendChild(li);
+      });
+    }
+
+    function addRanking(name, score) {
+      let rankings = getRankings();
+      rankings.push({name, score});
+      rankings.sort((a, b) => b.score - a.score);
+      if (rankings.length > MAX_RANKINGS) rankings = rankings.slice(0, MAX_RANKINGS);
+      saveRankings(rankings);
+      updateRankingList();
+    }
+
+    function gameOver() {
+      setTimeout(() => {
+        let rankings = getRankings();
+        let inTop10 = (
+          rankings.length < MAX_RANKINGS ||
+          score > rankings[rankings.length - 1].score
+        );
+        let msg = disqualified
+          ? `Sinut hylättiin, koska pisteesi menivät alle nollan!`
+          : `Peli ohi! Pisteesi: ${score}`;
+        if (inTop10 && score > 0 && !disqualified) {
+          let name = prompt(`${msg}\nOnneksi olkoon, pääsit ranking-listalle!\nSyötä nimesi:`, "Pelaaja");
+          if (name && name.trim()) {
+            addRanking(name.trim().substring(0, 16), score);
+          }
+        } else {
+          alert(msg);
+        }
+        document.location.reload();
+      }, 250);
+    }
+
+    // Ensimmäinen maali ja stroke
+    spawnTarget();
+    spawnStroke();
+
+    updateRankingList();
+    loop();
+  </script>
+</body>
+</html>
